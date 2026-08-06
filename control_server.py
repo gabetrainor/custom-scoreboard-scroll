@@ -123,8 +123,8 @@ def _render_png(st: dict) -> bytes:
     img = Image.new("RGB", (PANEL_WIDTH, PANEL_HEIGHT), (0, 0, 0))
     d = ImageDraw.Draw(img)
 
-    home = str(st["home"]).upper()[:4]
-    away = str(st["away"]).upper()[:4]
+    home = str(st["home"]).upper()[:5]
+    away = str(st["away"]).upper()[:5]
     period = str(st["period"]).upper()[:6]
     clock_str = "%d:%s" % (st["clock_minutes"], str(st["clock_seconds"]).zfill(2))
     running = bool(st["running"])
@@ -276,9 +276,9 @@ def api_teams():
     body = request.get_json(silent=True) or {}
     with _lock:
         if body.get("home"):
-            _state["home"] = str(body["home"])[:12]
+            _state["home"] = str(body["home"])[:5]
         if body.get("away"):
-            _state["away"] = str(body["away"])[:12]
+            _state["away"] = str(body["away"])[:5]
         _save(_state)
         return jsonify(_public_state_locked())
 
@@ -383,8 +383,8 @@ CONTROL_PAGE = """<!doctype html>
 </div>
 
 <div class="rename">
-  <input id="home-input" placeholder="Home team name">
-  <input id="away-input" placeholder="Away team name">
+  <input id="home-input" placeholder="Home team name" maxlength="5">
+  <input id="away-input" placeholder="Away team name" maxlength="5">
   <button onclick="renameTeams()">Rename</button>
 </div>
 
