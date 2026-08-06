@@ -142,7 +142,8 @@ def _public_state_locked() -> dict:
 def _render_png(st: dict) -> bytes:
     """Draw `st` (a _public_state_locked() dict) as a 128x32 PNG, laid out to
     match the app.star Studio preview: team names + period on top, big
-    scores flanking a center clock, LIVE/PAUSED at the bottom."""
+    scores flanking a center clock (colored green when running, red when
+    paused)."""
     img = Image.new("RGB", (PANEL_WIDTH, PANEL_HEIGHT), (0, 0, 0))
     d = ImageDraw.Draw(img)
 
@@ -167,11 +168,6 @@ def _render_png(st: dict) -> bytes:
     pixel_font.draw_text(d, clock_str, PANEL_WIDTH // 2, 13, scale=1,
                          color=clock_color, align="center")
 
-    dot_color = (76, 175, 80) if running else (229, 115, 115)
-    d.ellipse([4, 24, 8, 28], fill=dot_color)
-    pixel_font.draw_text(d, "LIVE" if running else "PAUSED", 11, 25, scale=1,
-                         color=dot_color)
-
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
@@ -191,7 +187,6 @@ def _render_png_64x32(st: dict) -> bytes:
     away = str(st["away"]).upper()[:4]
     period = str(st["period"]).upper()[:10]
     clock_str = "%d:%s" % (st["clock_minutes"], str(st["clock_seconds"]).zfill(2))
-    running = bool(st["running"])
 
     pixel_font.draw_text(d, home, 2, 1, scale=1, color=(255, 204, 51))
     pixel_font.draw_text(d, away, 62, 1, scale=1, color=(51, 204, 255), align="right")
@@ -203,8 +198,6 @@ def _render_png_64x32(st: dict) -> bytes:
     if period:
         pixel_font.draw_text(d, period, 32, 17, scale=1, color=(150, 150, 150), align="center")
 
-    dot_color = (76, 175, 80) if running else (229, 115, 115)
-    d.ellipse([1, 25, 5, 29], fill=dot_color)
     pixel_font.draw_text(d, clock_str, 32, 24, scale=1, color=(255, 255, 255), align="center")
 
     buf = io.BytesIO()
