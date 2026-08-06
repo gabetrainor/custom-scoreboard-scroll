@@ -6,6 +6,8 @@ one-click override like OT/Halftime/Final), driven from a phone.
 
 - `GET /render.png` — the current state as a 128x32 PNG. Point a Glance
   panel's Private App at this URL.
+- `GET /render64.png` — the same state as a 64x32 PNG, for a second panel
+  (Custom Scoreboard Classic) running the same game.
 - `GET /` — the control panel (buttons). Protect with `CONTROL_PASSWORD`.
 - `GET /api/state` — current state as JSON (unauthenticated, read-only).
 - `POST /api/score`, `/api/period/type`, `/api/period/number`,

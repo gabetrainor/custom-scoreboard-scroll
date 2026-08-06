@@ -1,4 +1,5 @@
-"""Live control server for the `custom-scoreboard-scroll` GDN app.
+"""Live control server shared by the `custom-scoreboard-scroll` (128x32) and
+`custom-scoreboard-classic` (64x32) GDN apps — one game, two panel sizes.
 
 Runs alongside `gdn studio`/`gdn preview` (a separate process, separate port).
 It owns the game state — scores, period, and a start/stop game clock — and
@@ -13,6 +14,7 @@ exposes:
                      App" at this URL (see the module docstring in
                      pixel_font.py / DEPLOY.md) to show live scores on real
                      hardware.
+  GET  /render64.png  the same state at 64x32, for Custom Scoreboard Classic.
   POST /api/...      the actions the control panel buttons call
 
 Nothing but this process ever mutates state, so it stays consistent no
@@ -165,6 +167,40 @@ def _render_png(st: dict) -> bytes:
     return buf.getvalue()
 
 
+def _render_png_64x32(st: dict) -> bytes:
+    """Same state as _render_png, laid out for the 64x32 "Custom Scoreboard
+    Classic" panel. Half the width doesn't leave room for team names and
+    period to share a row, so period gets its own full-width row and
+    everything else uses a smaller uniform scale to stay clipping-free even
+    at worst case (5-char names, 3-digit scores)."""
+    img = Image.new("RGB", (64, 32), (0, 0, 0))
+    d = ImageDraw.Draw(img)
+
+    home = str(st["home"]).upper()[:4]
+    away = str(st["away"]).upper()[:4]
+    period = str(st["period"]).upper()[:10]
+    clock_str = "%d:%s" % (st["clock_minutes"], str(st["clock_seconds"]).zfill(2))
+    running = bool(st["running"])
+
+    if period:
+        pixel_font.draw_text(d, period, 32, 1, scale=1, color=(150, 150, 150), align="center")
+
+    pixel_font.draw_text(d, home, 2, 9, scale=1, color=(255, 204, 51))
+    pixel_font.draw_text(d, away, 62, 9, scale=1, color=(51, 204, 255), align="right")
+
+    pixel_font.draw_text(d, str(st["home_score"]), 2, 17, scale=1, color=(255, 255, 255))
+    pixel_font.draw_text(d, str(st["away_score"]), 62, 17, scale=1,
+                         color=(255, 255, 255), align="right")
+
+    dot_color = (76, 175, 80) if running else (229, 115, 115)
+    d.ellipse([4, 26, 8, 30], fill=dot_color)
+    pixel_font.draw_text(d, clock_str, 32, 25, scale=1, color=dot_color, align="center")
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 app = Flask(__name__)
 
 CONTROL_PASSWORD = os.environ.get("CONTROL_PASSWORD", "")
@@ -197,6 +233,16 @@ def api_state():
 def render_png():
     with _lock:
         png = _render_png(_public_state_locked())
+    return Response(png, mimetype="image/png",
+                    headers={"Cache-Control": "no-store"})
+
+
+@app.get("/render64.png")
+def render_png_64x32():
+    """Same live state as /render.png, laid out for the 64x32 Custom
+    Scoreboard Classic panel. Point that panel's Private App here."""
+    with _lock:
+        png = _render_png_64x32(_public_state_locked())
     return Response(png, mimetype="image/png",
                     headers={"Cache-Control": "no-store"})
 
