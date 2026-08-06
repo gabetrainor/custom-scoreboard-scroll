@@ -49,14 +49,23 @@ import pixel_font
 STATE_PATH = Path(__file__).resolve().parent / "state.json"
 PANEL_WIDTH = 128
 PANEL_HEIGHT = 32
-PERIOD_PRESETS = ["Q1", "Q2", "Q3", "Q4", "OT", "HALF", "FINAL"]
+
+# Quick-select period *types* (the counter reads "{period_type} {period_number}",
+# e.g. "QUARTER 3") and one-click *overrides* (a literal string that replaces the
+# type+number display until the next type/number change resumes it). Both lists
+# are just what the control panel buttons offer — /api/period/type and
+# /api/period/override also take arbitrary custom text.
+PERIOD_TYPE_PRESETS = ["QUARTER", "HALF", "PERIOD", "INNING"]
+PERIOD_OVERRIDE_PRESETS = ["PREGAME", "HALFTIME", "OT", "OT2", "SHOOTOUT", "FINAL"]
 
 DEFAULT_STATE = {
     "home": "HOME",
     "away": "AWAY",
     "home_score": 0,
     "away_score": 0,
-    "period": "Q1",
+    "period_type": "QUARTER",
+    "period_number": 1,
+    "period": "QUARTER 1",      # the literal text drawn on the panel
     "clock_seconds": 12 * 60,   # frozen remaining seconds when not running
     "running": False,
     "last_tick": 0.0,           # epoch time clock last started running
@@ -109,6 +118,8 @@ def _public_state_locked() -> dict:
         "home_score": _state["home_score"],
         "away_score": _state["away_score"],
         "period": _state["period"],
+        "period_type": _state["period_type"],
+        "period_number": _state["period_number"],
         "running": _state["running"],
         "clock_minutes": remaining // 60,
         "clock_seconds": remaining % 60,
@@ -125,7 +136,7 @@ def _render_png(st: dict) -> bytes:
 
     home = str(st["home"]).upper()[:5]
     away = str(st["away"]).upper()[:5]
-    period = str(st["period"]).upper()[:6]
+    period = str(st["period"]).upper()[:10]
     clock_str = "%d:%s" % (st["clock_minutes"], str(st["clock_seconds"]).zfill(2))
     running = bool(st["running"])
 
@@ -205,20 +216,50 @@ def api_score():
         return jsonify(_public_state_locked())
 
 
-@app.post("/api/period")
+@app.post("/api/period/type")
 @require_auth
-def api_period():
+def api_period_type():
+    """Set the period *type* word (QUARTER, HALF, PERIOD, INNING, or any
+    custom text) and recompute the displayed period as "{type} {number}"."""
     body = request.get_json(silent=True) or {}
-    value = body.get("value")
-    step = body.get("step")
+    value = str(body.get("value", "")).strip().upper()[:12]
+    if not value:
+        return jsonify(error="value required"), 400
     with _lock:
-        if value is not None:
-            _state["period"] = str(value)[:12]
-        elif step is not None:
-            cur = _state["period"] if _state["period"] in PERIOD_PRESETS else PERIOD_PRESETS[0]
-            i = PERIOD_PRESETS.index(cur)
-            i = max(0, min(len(PERIOD_PRESETS) - 1, i + int(step)))
-            _state["period"] = PERIOD_PRESETS[i]
+        _state["period_type"] = value
+        _state["period"] = f"{value} {_state['period_number']}"
+        _save(_state)
+        return jsonify(_public_state_locked())
+
+
+@app.post("/api/period/number")
+@require_auth
+def api_period_number():
+    """+1/-1 the period counter (floor of 1) and recompute the displayed
+    period as "{type} {number}" — this resumes normal play, replacing
+    whatever override (halftime, OT, ...) may currently be showing."""
+    body = request.get_json(silent=True) or {}
+    delta = int(body.get("delta", 0))
+    with _lock:
+        _state["period_number"] = max(1, _state["period_number"] + delta)
+        _state["period"] = f"{_state['period_type']} {_state['period_number']}"
+        _save(_state)
+        return jsonify(_public_state_locked())
+
+
+@app.post("/api/period/override")
+@require_auth
+def api_period_override():
+    """Set the displayed period to an arbitrary literal string (used by both
+    the OT/HALFTIME/etc. preset buttons and the manual text field). Doesn't
+    touch period_type/period_number, so +1/-1 later resumes the count from
+    wherever it left off."""
+    body = request.get_json(silent=True) or {}
+    value = str(body.get("value", "")).strip().upper()[:16]
+    if not value:
+        return jsonify(error="value required"), 400
+    with _lock:
+        _state["period"] = value
         _save(_state)
         return jsonify(_public_state_locked())
 
@@ -324,9 +365,17 @@ CONTROL_PAGE = """<!doctype html>
   .clock.running { color: #4caf50; }
   .clock.stopped { color: #e57373; }
   .status { font-size: 13px; color: #999; margin-top: 4px; }
-  .period-panel { margin-top: 18px; }
+  .period-panel { margin-top: 18px; background: #1b1b1b; border-radius: 10px;
+                  padding: 14px; }
+  .period-panel h3 { margin: 0 0 10px; font-size: 13px; color: #999;
+                      text-transform: uppercase; letter-spacing: .05em; }
   .presets { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
   .presets button.active { background: #4caf50; color: #111; }
+  .period-display { font-size: 22px; font-weight: 700; min-width: 140px;
+                     text-align: center; }
+  .textrow { margin-top: 10px; display: flex; gap: 8px; }
+  .textrow input { flex: 1; background: #222; border: 1px solid #444; color: #eee;
+                   border-radius: 6px; padding: 8px; min-width: 0; }
   .rename { margin-top: 18px; display: flex; gap: 8px; }
   .rename input { flex: 1; background: #222; border: 1px solid #444; color: #eee;
                   border-radius: 6px; padding: 8px; }
@@ -379,7 +428,26 @@ CONTROL_PAGE = """<!doctype html>
 </div>
 
 <div class="period-panel">
-  <div class="presets" id="presets"></div>
+  <h3>Period type</h3>
+  <div class="presets" id="type-presets"></div>
+  <div class="textrow">
+    <input id="period-type-input" placeholder="Custom type, e.g. SET" maxlength="12">
+    <button onclick="setCustomType()">Use</button>
+  </div>
+
+  <h3 style="margin-top:16px">Counter</h3>
+  <div class="row" style="align-items:center; gap:16px">
+    <button class="big" onclick="periodNumber(-1)">-1</button>
+    <div class="period-display" id="period-display">QUARTER 1</div>
+    <button class="big" onclick="periodNumber(1)">+1</button>
+  </div>
+
+  <h3 style="margin-top:16px">Overrides</h3>
+  <div class="presets" id="override-presets"></div>
+  <div class="textrow">
+    <input id="period-override-input" placeholder="Custom period text..." maxlength="16">
+    <button onclick="setCustomOverride()">Set</button>
+  </div>
 </div>
 
 <div class="rename">
@@ -396,14 +464,24 @@ CONTROL_PAGE = """<!doctype html>
 endpoint on its own refresh, so the LED preview follows this panel.</div>
 
 <script>
-const PRESETS = ["Q1","Q2","Q3","Q4","OT","HALF","FINAL"];
-const presetsEl = document.getElementById('presets');
-PRESETS.forEach(p => {
+const TYPE_PRESETS = ["QUARTER","HALF","PERIOD","INNING"];
+const typePresetsEl = document.getElementById('type-presets');
+TYPE_PRESETS.forEach(p => {
   const b = document.createElement('button');
-  b.textContent = p;
-  b.onclick = () => setPeriod(p);
-  b.dataset.period = p;
-  presetsEl.appendChild(b);
+  b.textContent = p[0] + p.slice(1).toLowerCase();
+  b.onclick = () => periodType(p);
+  b.dataset.periodType = p;
+  typePresetsEl.appendChild(b);
+});
+
+const OVERRIDE_PRESETS = ["PREGAME","HALFTIME","OT","OT2","SHOOTOUT","FINAL"];
+const overridePresetsEl = document.getElementById('override-presets');
+OVERRIDE_PRESETS.forEach(p => {
+  const b = document.createElement('button');
+  b.textContent = p[0] + p.slice(1).toLowerCase();
+  b.onclick = () => periodOverride(p);
+  b.dataset.override = p;
+  overridePresetsEl.appendChild(b);
 });
 
 async function post(url, body) {
@@ -420,7 +498,17 @@ function clockStart() { post('/api/clock/start'); }
 function clockStop() { post('/api/clock/stop'); }
 function clockAdjust(seconds) { post('/api/clock/adjust', {seconds}); }
 function clockSet(minutes, seconds) { post('/api/clock/set', {minutes, seconds}); }
-function setPeriod(value) { post('/api/period', {value}); }
+function periodType(value) { post('/api/period/type', {value}); }
+function periodNumber(delta) { post('/api/period/number', {delta}); }
+function periodOverride(value) { post('/api/period/override', {value}); }
+function setCustomType() {
+  const v = document.getElementById('period-type-input').value.trim();
+  if (v) post('/api/period/type', {value: v});
+}
+function setCustomOverride() {
+  const v = document.getElementById('period-override-input').value.trim();
+  if (v) post('/api/period/override', {value: v});
+}
 function renameTeams() {
   const home = document.getElementById('home-input').value.trim();
   const away = document.getElementById('away-input').value.trim();
@@ -441,7 +529,9 @@ function render(s) {
   clockEl.classList.toggle('running', s.running);
   clockEl.classList.toggle('stopped', !s.running);
   document.getElementById('clock-status').textContent = s.running ? 'running' : 'stopped';
-  [...presetsEl.children].forEach(b => b.classList.toggle('active', b.dataset.period === s.period));
+  document.getElementById('period-display').textContent = s.period;
+  [...typePresetsEl.children].forEach(b => b.classList.toggle('active', b.dataset.periodType === s.period_type));
+  [...overridePresetsEl.children].forEach(b => b.classList.toggle('active', b.dataset.override === s.period));
 }
 
 async function poll() {
