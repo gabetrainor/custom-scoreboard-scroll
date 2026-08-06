@@ -10,10 +10,10 @@ one-click override like OT/Halftime/Final), driven from a phone.
   (Custom Scoreboard Classic) running the same game.
 - `GET /` — the control panel (buttons). Protect with `CONTROL_PASSWORD`.
 - `GET /api/state` — current state as JSON (unauthenticated, read-only).
-- `POST /api/score`, `/api/period/type`, `/api/period/number`,
-  `/api/period/override`, `/api/clock/start|stop|set|adjust`,
-  `/api/teams`, `/api/reset` — mutating actions, require basic auth once
-  `CONTROL_PASSWORD` is set.
+- `POST /api/score`, `/api/score/set`, `/api/period/type`,
+  `/api/period/number`, `/api/period/override`,
+  `/api/clock/start|stop|set|adjust`, `/api/teams`, `/api/reset` —
+  mutating actions, require basic auth once `CONTROL_PASSWORD` is set.
 
 Run locally: `python control_server.py [port]` (defaults to 8787, no auth).
 

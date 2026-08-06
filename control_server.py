@@ -266,6 +266,22 @@ def api_score():
         return jsonify(_public_state_locked())
 
 
+@app.post("/api/score/set")
+@require_auth
+def api_score_set():
+    """Set a team's score to an exact value (the manual score input), as
+    opposed to /api/score's +/- delta buttons."""
+    body = request.get_json(silent=True) or {}
+    team = body.get("team")
+    if team not in ("home", "away"):
+        return jsonify(error="team must be 'home' or 'away'"), 400
+    value = int(body.get("value", 0))
+    with _lock:
+        _state[f"{team}_score"] = max(0, value)
+        _save(_state)
+        return jsonify(_public_state_locked())
+
+
 @app.post("/api/period/type")
 @require_auth
 def api_period_type():
@@ -450,6 +466,10 @@ CONTROL_PAGE = """<!doctype html>
       <button onclick="score('home',2)">+2</button>
       <button onclick="score('home',3)">+3</button>
     </div>
+    <div class="textrow">
+      <input id="home-score-input" class="numinput" type="number" min="0" placeholder="0">
+      <button onclick="setCustomScore('home')">Set</button>
+    </div>
   </div>
   <div class="team away">
     <h2 id="away-name">AWAY</h2>
@@ -459,6 +479,10 @@ CONTROL_PAGE = """<!doctype html>
       <button class="big" onclick="score('away',1)">+1</button>
       <button onclick="score('away',2)">+2</button>
       <button onclick="score('away',3)">+3</button>
+    </div>
+    <div class="textrow">
+      <input id="away-score-input" class="numinput" type="number" min="0" placeholder="0">
+      <button onclick="setCustomScore('away')">Set</button>
     </div>
   </div>
 </div>
@@ -555,6 +579,11 @@ async function post(url, body) {
 }
 
 function score(team, delta) { post('/api/score', {team, delta}); }
+function setCustomScore(team) {
+  const input = document.getElementById(`${team}-score-input`);
+  const value = parseInt(input.value, 10) || 0;
+  post('/api/score/set', {team, value});
+}
 function clockStart() { post('/api/clock/start'); }
 function clockStop() { post('/api/clock/stop'); }
 function clockAdjust(seconds) { post('/api/clock/adjust', {seconds}); }
