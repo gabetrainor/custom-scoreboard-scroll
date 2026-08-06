@@ -60,6 +60,21 @@ PANEL_HEIGHT = 32
 PERIOD_TYPE_PRESETS = ["QUARTER", "HALF", "PERIOD", "INNING"]
 PERIOD_OVERRIDE_PRESETS = ["PREGAME", "HALFTIME", "OT", "OT2", "SHOOTOUT", "FINAL"]
 
+# Custom Scoreboard Classic (64x32) has no room for the full override words,
+# so _render_png_64x32 abbreviates the known ones to 3 characters or fewer
+# and just truncates anything it doesn't recognize (a custom-typed override,
+# or a rare double-digit ordinal). The 128x32 render stays full-text.
+PERIOD_ABBREV = {
+    "PREGAME": "PRE",
+    "HALFTIME": "HT",
+    "SHOOTOUT": "SO",
+    "FINAL": "FIN",
+}
+
+
+def _abbreviate_period(period: str) -> str:
+    return PERIOD_ABBREV.get(period, period[:3])
+
 DEFAULT_STATE = {
     "home": "HOME",
     "away": "AWAY",
@@ -196,9 +211,10 @@ def _render_png_64x32(st: dict) -> bytes:
                          color=(255, 255, 255), align="right")
 
     if period:
-        pixel_font.draw_text(d, period, 32, 17, scale=1, color=(150, 150, 150), align="center")
+        pixel_font.draw_text(d, _abbreviate_period(period), 32, 16, scale=1,
+                             color=(150, 150, 150), align="center")
 
-    pixel_font.draw_text(d, clock_str, 32, 24, scale=1, color=(255, 255, 255), align="center")
+    pixel_font.draw_text(d, clock_str, 32, 23, scale=1, color=(255, 255, 255), align="center")
 
     buf = io.BytesIO()
     img.save(buf, format="PNG")
