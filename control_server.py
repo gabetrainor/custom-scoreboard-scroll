@@ -67,7 +67,7 @@ DEFAULT_STATE = {
     "away_score": 0,
     "period_type": "QUARTER",
     "period_number": 1,
-    "period": "QUARTER 1",      # the literal text drawn on the panel
+    "period": "1ST",            # the literal text drawn on the panel
     "clock_seconds": 12 * 60,   # frozen remaining seconds when not running
     "running": False,
     "last_tick": 0.0,           # epoch time clock last started running
@@ -107,6 +107,16 @@ def _freeze_locked() -> None:
     if _state["running"]:
         _state["clock_seconds"] = _remaining_locked()
         _state["running"] = False
+
+
+def _ordinal(n: int) -> str:
+    """1 -> "1ST", 2 -> "2ND", 3 -> "3RD", 4 -> "4TH", 11-13 -> "TH", etc."""
+    n = int(n)
+    if 10 <= n % 100 <= 20:
+        suffix = "TH"
+    else:
+        suffix = {1: "ST", 2: "ND", 3: "RD"}.get(n % 10, "TH")
+    return f"{n}{suffix}"
 
 
 def _public_state_locked() -> dict:
@@ -169,10 +179,11 @@ def _render_png(st: dict) -> bytes:
 
 def _render_png_64x32(st: dict) -> bytes:
     """Same state as _render_png, laid out for the 64x32 "Custom Scoreboard
-    Classic" panel. Half the width doesn't leave room for team names and
-    period to share a row, so period gets its own full-width row and
-    everything else uses a smaller uniform scale to stay clipping-free even
-    at worst case (5-char names, 3-digit scores)."""
+    Classic" panel: team names + scores up top, period centered below them,
+    clock centered under that. `period` is already whatever the control
+    server decided to show — an ordinal ("1ST", "2ND", ...) while the
+    counter drives it, or literal override text (HALFTIME, OT, ...) — this
+    just draws the string, no logic of its own."""
     img = Image.new("RGB", (64, 32), (0, 0, 0))
     d = ImageDraw.Draw(img)
 
@@ -182,19 +193,19 @@ def _render_png_64x32(st: dict) -> bytes:
     clock_str = "%d:%s" % (st["clock_minutes"], str(st["clock_seconds"]).zfill(2))
     running = bool(st["running"])
 
-    if period:
-        pixel_font.draw_text(d, period, 32, 1, scale=1, color=(150, 150, 150), align="center")
+    pixel_font.draw_text(d, home, 2, 1, scale=1, color=(255, 204, 51))
+    pixel_font.draw_text(d, away, 62, 1, scale=1, color=(51, 204, 255), align="right")
 
-    pixel_font.draw_text(d, home, 2, 9, scale=1, color=(255, 204, 51))
-    pixel_font.draw_text(d, away, 62, 9, scale=1, color=(51, 204, 255), align="right")
-
-    pixel_font.draw_text(d, str(st["home_score"]), 2, 17, scale=1, color=(255, 255, 255))
-    pixel_font.draw_text(d, str(st["away_score"]), 62, 17, scale=1,
+    pixel_font.draw_text(d, str(st["home_score"]), 2, 9, scale=1, color=(255, 255, 255))
+    pixel_font.draw_text(d, str(st["away_score"]), 62, 9, scale=1,
                          color=(255, 255, 255), align="right")
 
+    if period:
+        pixel_font.draw_text(d, period, 32, 17, scale=1, color=(150, 150, 150), align="center")
+
     dot_color = (76, 175, 80) if running else (229, 115, 115)
-    d.ellipse([4, 26, 8, 30], fill=dot_color)
-    pixel_font.draw_text(d, clock_str, 32, 25, scale=1, color=dot_color, align="center")
+    d.ellipse([1, 25, 5, 29], fill=dot_color)
+    pixel_font.draw_text(d, clock_str, 32, 24, scale=1, color=(255, 255, 255), align="center")
 
     buf = io.BytesIO()
     img.save(buf, format="PNG")
@@ -265,15 +276,17 @@ def api_score():
 @app.post("/api/period/type")
 @require_auth
 def api_period_type():
-    """Set the period *type* word (QUARTER, HALF, PERIOD, INNING, or any
-    custom text) and recompute the displayed period as "{type} {number}"."""
+    """Set the period *type* (QUARTER, HALF, PERIOD, INNING, or any custom
+    text) — tracked for the control panel's own bookkeeping, but the panel
+    display is just the ordinal ("1ST", "2ND", ...), so this recomputes that
+    from the current number rather than showing the type word itself."""
     body = request.get_json(silent=True) or {}
     value = str(body.get("value", "")).strip().upper()[:12]
     if not value:
         return jsonify(error="value required"), 400
     with _lock:
         _state["period_type"] = value
-        _state["period"] = f"{value} {_state['period_number']}"
+        _state["period"] = _ordinal(_state["period_number"])
         _save(_state)
         return jsonify(_public_state_locked())
 
@@ -282,13 +295,14 @@ def api_period_type():
 @require_auth
 def api_period_number():
     """+1/-1 the period counter (floor of 1) and recompute the displayed
-    period as "{type} {number}" — this resumes normal play, replacing
-    whatever override (halftime, OT, ...) may currently be showing."""
+    period as its ordinal ("1ST", "2ND", ...) — this resumes normal play,
+    replacing whatever override (halftime, OT, ...) may currently be
+    showing."""
     body = request.get_json(silent=True) or {}
     delta = int(body.get("delta", 0))
     with _lock:
         _state["period_number"] = max(1, _state["period_number"] + delta)
-        _state["period"] = f"{_state['period_type']} {_state['period_number']}"
+        _state["period"] = _ordinal(_state["period_number"])
         _save(_state)
         return jsonify(_public_state_locked())
 
@@ -492,7 +506,7 @@ CONTROL_PAGE = """<!doctype html>
   <h3 style="margin-top:16px">Counter</h3>
   <div class="row" style="align-items:center; gap:16px">
     <button class="big" onclick="periodNumber(-1)">-1</button>
-    <div class="period-display" id="period-display">QUARTER 1</div>
+    <div class="period-display" id="period-display">1ST</div>
     <button class="big" onclick="periodNumber(1)">+1</button>
   </div>
 
