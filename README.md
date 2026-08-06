@@ -1,13 +1,15 @@
-# glance-scoreboard
+# custom-scoreboard-scroll
 
 A live-controlled two-team scoreboard for a Glance LED panel: scores, a
-start/stop game clock, and period, driven from a phone.
+start/stop game clock, and a configurable period (type + counter, or a
+one-click override like OT/Halftime/Final), driven from a phone.
 
 - `GET /render.png` — the current state as a 128x32 PNG. Point a Glance
   panel's Private App at this URL.
 - `GET /` — the control panel (buttons). Protect with `CONTROL_PASSWORD`.
 - `GET /api/state` — current state as JSON (unauthenticated, read-only).
-- `POST /api/score`, `/api/period`, `/api/clock/start|stop|set|adjust`,
+- `POST /api/score`, `/api/period/type`, `/api/period/number`,
+  `/api/period/override`, `/api/clock/start|stop|set|adjust`,
   `/api/teams`, `/api/reset` — mutating actions, require basic auth once
   `CONTROL_PASSWORD` is set.
 

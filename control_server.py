@@ -1,4 +1,4 @@
-"""Live control server for the `scoreboard` GDN app.
+"""Live control server for the `custom-scoreboard-scroll` GDN app.
 
 Runs alongside `gdn studio`/`gdn preview` (a separate process, separate port).
 It owns the game state — scores, period, and a start/stop game clock — and
@@ -18,7 +18,7 @@ exposes:
 Nothing but this process ever mutates state, so it stays consistent no
 matter how many panels/browser tabs are reading it.
 
-Run it with:  python apps/scoreboard/control_server.py [port]
+Run it with:  python control_server.py [port]
 
 Deploying this somewhere public (so a real panel's render service can reach
 /api/state, and so you can drive the game from your phone) means anyone with
