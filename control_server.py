@@ -376,6 +376,8 @@ CONTROL_PAGE = """<!doctype html>
   .textrow { margin-top: 10px; display: flex; gap: 8px; }
   .textrow input { flex: 1; background: #222; border: 1px solid #444; color: #eee;
                    border-radius: 6px; padding: 8px; min-width: 0; }
+  .numinput { width: 56px; background: #222; border: 1px solid #444; color: #eee;
+              border-radius: 6px; padding: 8px; text-align: center; font-size: 16px; }
   .rename { margin-top: 18px; display: flex; gap: 8px; }
   .rename input { flex: 1; background: #222; border: 1px solid #444; color: #eee;
                   border-radius: 6px; padding: 8px; }
@@ -424,6 +426,12 @@ CONTROL_PAGE = """<!doctype html>
     <button onclick="clockSet(10,0)">Set 10:00</button>
     <button onclick="clockSet(1,0)">Set 1:00</button>
     <button onclick="clockSet(0,0)">Set 0:00</button>
+  </div>
+  <div class="row" style="margin-top:10px; align-items:center; gap:6px">
+    <input id="clock-min-input" class="numinput" type="number" min="0" max="99" placeholder="MM">
+    <span>:</span>
+    <input id="clock-sec-input" class="numinput" type="number" min="0" max="59" placeholder="SS">
+    <button onclick="setCustomClock()">Set clock</button>
   </div>
 </div>
 
@@ -498,6 +506,11 @@ function clockStart() { post('/api/clock/start'); }
 function clockStop() { post('/api/clock/stop'); }
 function clockAdjust(seconds) { post('/api/clock/adjust', {seconds}); }
 function clockSet(minutes, seconds) { post('/api/clock/set', {minutes, seconds}); }
+function setCustomClock() {
+  const minutes = parseInt(document.getElementById('clock-min-input').value, 10) || 0;
+  const seconds = parseInt(document.getElementById('clock-sec-input').value, 10) || 0;
+  clockSet(minutes, seconds);
+}
 function periodType(value) { post('/api/period/type', {value}); }
 function periodNumber(delta) { post('/api/period/number', {delta}); }
 function periodOverride(value) { post('/api/period/override', {value}); }
